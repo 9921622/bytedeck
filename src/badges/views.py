@@ -7,7 +7,8 @@ from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
-from django.views.generic import RedirectView
+from django.utils import timezone
+from django.views.generic import RedirectView, TemplateView
 from django.views.generic.edit import CreateView, DeleteView, UpdateView
 from django.views.generic.list import ListView
 
@@ -21,29 +22,70 @@ from tenant.views import NonPublicOnlyViewMixin, non_public_only_view
 from .forms import BadgeAssertionForm, BadgeForm, BulkBadgeAssertionForm
 from .models import Badge, BadgeAssertion, BadgeType
 
+import datetime
+
 
 class AchievementRedirectView(NonPublicOnlyViewMixin, LoginRequiredMixin, RedirectView):
     def dispatch(self, request):
         return redirect(request.path_info.replace("achievements", "badges", 1))
 
 
-@non_public_only_view
-@login_required
-def badge_list(request):
-    badge_types = BadgeType.objects.all()
-    inactive_badges = Badge.objects.all().filter(active=False)
+class BadgeList(NonPublicOnlyViewMixin, LoginRequiredMixin, TemplateView):
+    template_name = "badges/list.html"
 
-    # http://stackoverflow.com/questions/32421214/django-queryset-all-model1-objects-where-a-model2-exists-with-a-model1-and-the
-    earned_badges = Badge.objects.filter(badgeassertion__user=request.user)
+    def get_new_badges(self):
+        """ gets new badges based on session.badges_list__last_checked.
+        will only work if user has cookies on
+        """
+        new_badges = Badge.objects.none()
 
-    context = {
-        "heading": f"{SiteConfig.get().custom_name_for_badge}s",
-        # "badge_type_dicts": badge_type_dicts,
-        "badge_types": badge_types,
-        "earned_badges": earned_badges,
-        "inactive_badges": inactive_badges
-    }
-    return render(request, "badges/list.html", context)
+        # gets badges that are earned after 'badges_list__last_checked'
+        if not self.request.user.is_staff:
+            last_checked = self.request.session.get('badges_list__last_checked')
+
+            # if this runs, then its a new session. We have to add last_checked to session
+            if last_checked is None:
+                last_checked = timezone.now()
+                self.request.session['badges_list__last_checked'] = last_checked.isoformat()
+                self.request.session.modified = True
+
+            # have to convert from isoformat (json-serializable)
+            else:
+                last_checked = datetime.datetime.fromisoformat(last_checked)
+                last_checked = last_checked.replace(tzinfo=datetime.timezone.utc)
+
+            # if checked recently dont show again
+            # this also prevents users in incognito from being spammed with congratulations
+            # or anyone who cleared their cookies from getting congratulations
+            if (timezone.now() - last_checked).total_seconds() >= 30 or True:
+                new_assertions = BadgeAssertion.objects.all_for_user(self.request.user).filter(timestamp__gte=last_checked).order_by('timestamp')
+                new_badges = Badge.objects.filter(badgeassertion__in=new_assertions)
+
+                # modify session
+                # self.request.session['badges_list__last_checked'] = timezone.now().isoformat()
+                self.request.session['badges_list__last_checked'] = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc).isoformat()
+                self.request.session.modified = True
+
+        return new_badges
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        badge_types = BadgeType.objects.all()
+        inactive_badges = Badge.objects.all().filter(active=False)
+        earned_badges = Badge.objects.filter(badgeassertion__user=self.request.user)
+
+        new_badges = self.get_new_badges()
+        show_new_badges = new_badges.count() > 0
+
+        context["heading"] = f"{SiteConfig.get().custom_name_for_badge}s"
+        context["badge_types"] = badge_types
+        context["earned_badges"] = earned_badges
+        context["inactive_badges"] = inactive_badges
+        context["new_badges"] = new_badges
+        context["show_new_badges"] = show_new_badges
+
+        return context
 
 
 class BadgePrereqsUpdate(ObjectPrereqsFormView):

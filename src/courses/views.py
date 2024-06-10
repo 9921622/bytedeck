@@ -28,6 +28,7 @@ from django.db.models.functions import Greatest
 
 import numpy
 import math
+import datetime
 
 
 # Create your views here.
@@ -131,6 +132,51 @@ class MarkRangeDelete(NonPublicOnlyViewMixin, DeleteView):
 
 class RankList(NonPublicOnlyViewMixin, LoginRequiredMixin, ListView):
     model = Rank
+
+    def get_ranks_achieved(self):
+        """ gets the new ranks achieved since the last time user has visited ranks """
+        new_ranks = Rank.objects.none()
+
+        # gets ranks that are earned after 'ranks_list__last_checked'
+        if not self.request.user.is_staff:
+            last_checked = self.request.session.get('ranks_list__last_checked')
+
+            # if this runs, then its a new session. We have to add last_checked to session
+            if last_checked is None:
+                last_checked = timezone.now()
+                self.request.session['ranks_list__last_checked'] = last_checked.isoformat()
+                self.request.session.modified = True
+
+            # have to convert from isoformat (json-serializable)
+            else:
+                last_checked = datetime.datetime.fromisoformat(last_checked)
+                last_checked = last_checked.replace(tzinfo=datetime.timezone.utc)
+
+            # if checked recently dont show again
+            # this also prevents users in incognito from being spammed with congratulations
+            # or anyone who cleared their cookies from getting congratulations
+            if (timezone.now() - last_checked).total_seconds() >= 30 or True:
+                xp_prev = self.request.user.profile.xp_to_date(last_checked)
+                xp_now = self.request.user.profile.xp_cached
+                new_ranks = Rank.objects.all().get_ranks_gt(xp_prev).get_ranks_lte(xp_now)
+
+                # modify session
+                # self.request.session['ranks_list__last_checked'] = timezone.now().isoformat()
+                self.request.session['ranks_list__last_checked'] = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc).isoformat()
+                self.request.session.modified = True
+
+        return new_ranks
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        new_ranks_achieved = self.get_ranks_achieved()
+        show_new_ranks_achieved = new_ranks_achieved.count() > 0
+
+        context["ranks_achieved"] = new_ranks_achieved
+        context["show_new_ranks_achieved"] = show_new_ranks_achieved
+
+        return context
 
 
 @method_decorator(staff_member_required, name='dispatch')

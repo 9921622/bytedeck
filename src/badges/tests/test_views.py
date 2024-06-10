@@ -6,10 +6,13 @@ from django.urls import reverse
 from django_tenants.test.cases import TenantTestCase
 from django_tenants.test.client import TenantClient
 from model_bakery import baker
+from freezegun import freeze_time
 
 from badges.models import Badge, BadgeAssertion, BadgeType
 from hackerspace_online.tests.utils import ViewTestUtilsMixin
 from siteconfig.models import SiteConfig
+
+import datetime
 
 User = get_user_model()
 
@@ -99,6 +102,43 @@ class BadgeViewTests(ViewTestUtilsMixin, TenantTestCase):
         self.assert200('badges:bulk_grant')
         self.assert200('badges:revoke', args=[a_pk])
         self.assert200('badges:badge_prereqs_update', args=[a_pk])
+
+    def test_badge_list__new_badge_modal(self):
+        """ tests if """
+        self.client.force_login(self.test_student1)
+        starting_date = datetime.datetime(2024, 1, 1, 6, tzinfo=datetime.timezone.utc)
+
+        # test it doesn't show new badges upon empty session
+        with freeze_time(starting_date):
+            response = self.client.get(reverse('badges:list'))
+            self.assertEqual(self.client.session['badges_list__last_checked'], starting_date.isoformat())
+            self.assertEqual(response.context['new_badges'].count(), 0)
+
+        # create 2 new assertions from the same badge
+        baker.make(
+            BadgeAssertion,
+            user=self.test_student1,
+            badge=self.test_badge,
+            semester=self.sem,
+            timestamp=starting_date,
+            _quantity=2
+        )
+
+        # popup should not show up. As still in the 30 seconds "cool down"
+        date = starting_date + datetime.timedelta(seconds=15)
+        with freeze_time(date):
+            response = self.client.get(reverse('badges:list'))
+            self.assertNotEqual(self.client.session['badges_list__last_checked'], date.isoformat())
+            self.assertEqual(response.context['new_badges'].count(), 0)
+
+        # fast forward 30 seconds and new_badges should show in context
+        date = starting_date + datetime.timedelta(seconds=30)
+        with freeze_time(date):
+            response = self.client.get(reverse('badges:list'))
+            self.assertEqual(self.client.session['badges_list__last_checked'], date.isoformat())
+
+            # 2 new badges since student gotten xp from the same badge twice
+            self.assertEqual(response.context['new_badges'].count(), 2)
 
     def test_badge_create(self):
         # log in a teacher

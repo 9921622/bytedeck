@@ -11,6 +11,39 @@
 {% endblock %}
 
 {% block content %}
+    {% comment %} Will only show up if triggered by JS {% endcomment %}
+    <div class="modal fade" id="newRankModal" tabindex="-1" role="dialog" aria-labelledby="newRankLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="newRankLabel">
+              {% if ranks_achieved.count == 1 %}
+              Congratulations! You've gained a rank!
+              {% else %}
+              Congratulations! You've gained {{ ranks_achieved.count }} new ranks!
+              {% endif %}
+            </h5>
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+          <div class="modal-body container">
+
+            {% for rank in ranks_achieved %}
+            <div class="row">
+              <i class="{{rank.fa_icon}} fa-lg fa-fw text-warning"></i>
+              {{rank.name}}
+            </div>
+            {% endfor %}
+
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <table class="table table-striped">
       <thead>
         <tr>
@@ -51,4 +84,12 @@
     </table>
 {% endblock %}
 
-{% block js %}{% endblock %}
+{% block js %}
+<script>
+  $(document).ready(function() {
+    {% if not request.user.is_staff and show_new_ranks_achieved %}
+    $('#newRankModal').modal('show');
+    {% endif %}
+  });
+</script>
+{% endblock %}

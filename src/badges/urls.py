@@ -7,8 +7,8 @@ from django.conf.urls import url
 app_name = 'badges'
 
 urlpatterns = [
-    path('', views.badge_list, name='list'),
-    path('list/', views.badge_list, name='badge_list'),
+    path('', views.BadgeList.as_view(), name='list'),
+    path('list/', views.BadgeList.as_view(), name='badge_list'),
     path('create/', views.badge_create, name='badge_create'),
     path('<int:badge_id>', views.detail, name='badge_detail'),  # shows assertions of current students only
     path('<int:badge_id>/all/', views.detail_all, name='badge_detail_all'),  # show assertions of all students

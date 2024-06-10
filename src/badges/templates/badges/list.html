@@ -10,6 +10,41 @@
 {% endblock %}
 
 {% block content %}
+
+{% comment %} Will only show up if triggered by JS {% endcomment %}
+<div class="modal fade" id="newBadgeModal" tabindex="-1" role="dialog" aria-labelledby="newBadgeLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="newBadgeLabel">
+          {% if ranks_achieved.count == 1 %}
+          Congratulations! You've gained a badge!
+          {% else %}
+          Congratulations! You have earned {{ new_badges.count }} new {{ heading }}!
+          {% endif %}
+        </h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body row">
+
+        {% for badge in new_badges %}
+          <div class="col-xs-4 col-badge">
+            <a href="{{badge.get_absolute_url}}">
+              {% include 'badges/snippets/badge_icon.html' %}
+            </a>
+          </div>
+        {% endfor %}
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% for badge_type in badge_types %}
 <div class="panel panel-primary">
 
@@ -53,7 +88,11 @@
 {% block js %}
 <script>
 $(document).ready(function() {
-  $('[data-toggle="popover"]').popover()
+  $('[data-toggle="popover"]').popover();
+
+  {% if not request.user.is_staff and show_new_badges %}
+  $('#newBadgeModal').modal('show');
+  {% endif %}
 });
 </script>
 {% endblock %}
